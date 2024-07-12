@@ -1,20 +1,20 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount, Transfer};
 
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg8b4x6vKz2");
+declare_id!("Bou8TKf8G9iJQoZMptYtFHrpgvEjG4DTTXo8sxShLsht");
 
 #[program]
 pub mod algorithmic_stablecoin {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>, supply: u64) -> ProgramResult {
+    pub fn initialize(ctx: Context<Initialize>, supply: u64) -> Result<()> {
         let stablecoin = &mut ctx.accounts.stablecoin;
         stablecoin.supply = supply;
         stablecoin.price = 1.0; // Initial price
         Ok(())
     }
 
-    pub fn mint(ctx: Context<MintStablecoin>, amount: u64) -> ProgramResult {
+    pub fn mint(ctx: Context<MintStablecoin>, amount: u64) -> Result<()> {
         let cpi_accounts = MintTo {
             mint: ctx.accounts.mint.to_account_info().clone(),
             to: ctx.accounts.token_account.to_account_info().clone(),
@@ -30,7 +30,7 @@ pub mod algorithmic_stablecoin {
         Ok(())
     }
 
-    pub fn burn(ctx: Context<BurnStablecoin>, amount: u64) -> ProgramResult {
+    pub fn burn(ctx: Context<BurnStablecoin>, amount: u64) -> Result<()> {
         let cpi_accounts = Transfer {
             from: ctx.accounts.from.to_account_info().clone(),
             to: ctx.accounts.to.to_account_info().clone(),
