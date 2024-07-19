@@ -103,8 +103,6 @@ pub struct Initialise<'info> {
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, sysvar::rent::Rent>,
-    // TODO: does mint (account) need to be included here like
-    // https://beta.solpg.io/https://github.com/solana-developers/anchor-examples/tree/main/account-constraints/token ?
 }
 
 impl<'info> Initialise<'info> {
