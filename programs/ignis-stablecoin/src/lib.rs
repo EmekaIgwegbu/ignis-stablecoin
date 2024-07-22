@@ -17,13 +17,14 @@ pub mod ignis_stablecoin {
     ) -> Result<()> {
         let bumps = ctx.bumps;
         // Initialise ignis mint
-        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let token_program = ctx.accounts.token_program.to_account_info();
         let cpi_accounts = InitializeMint {
             mint: ctx.accounts.ignis_mint.to_account_info(),
             rent: ctx.accounts.rent.to_account_info(),
         };
-        let signer_seeds = &[b"ignis-mint", &[bumps.ignis_mint][..]][..];
-        let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, &[signer_seeds]);
+
+        let signer_seeds = &[b"ignis_mint", &[bumps.ignis_mint][..]][..];
+        let cpi_context = CpiContext::new_with_signer(token_program, cpi_accounts, &[signer_seeds]);
         token::initialize_mint(
             cpi_context,
             6,                                             // ignis decimal precision
@@ -36,8 +37,8 @@ pub mod ignis_stablecoin {
             mint: ctx.accounts.ventura_mint.to_account_info(),
             rent: ctx.accounts.rent.to_account_info(),
         };
-        let signer_seeds = &[b"ventura-mint", &[bumps.ventura_mint][..]][..];
-        let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, &[signer_seeds]);
+        let signer_seeds = &[b"ventura_mint", &[bumps.ventura_mint][..]][..];
+        let cpi_context = CpiContext::new_with_signer(token_program, cpi_accounts, &[signer_seeds]);
         token::initialize_mint(
             cpi_context,
             6,                                               // ventura decimal precision
@@ -52,8 +53,8 @@ pub mod ignis_stablecoin {
             authority: ctx.accounts.ignis_reserve.to_account_info(),
             rent: ctx.accounts.rent.to_account_info(),
         };
-        let signer_seeds = &[b"ignis-reserve", &[bumps.ignis_reserve][..]][..];
-        let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, &[signer_seeds]);
+        let signer_seeds = &[b"ignis_reserve", &[bumps.ignis_reserve][..]][..];
+        let cpi_context = CpiContext::new_with_signer(token_program, cpi_accounts, &[signer_seeds]);
         token::initialize_account(cpi_context);
 
         // Initialize ventura reserve
@@ -63,8 +64,8 @@ pub mod ignis_stablecoin {
             authority: ctx.accounts.ventura_reserve.to_account_info(),
             rent: ctx.accounts.rent.to_account_info(),
         };
-        let signer_seeds = &[b"ventura-reserve", &[bumps.ventura_reserve][..]][..];
-        let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, &[signer_seeds]);
+        let signer_seeds = &[b"ventura_reserve", &[bumps.ventura_reserve][..]][..];
+        let cpi_context = CpiContext::new_with_signer(token_program, cpi_accounts, &[signer_seeds]);
         token::initialize_account(cpi_context);
 
         // Mint ignis to the reserve
@@ -73,7 +74,7 @@ pub mod ignis_stablecoin {
             mint: ctx.accounts.ignis_mint.to_account_info(),
             to: ctx.accounts.ignis_reserve.to_account_info(),
         };
-        let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
+        let cpi_context = CpiContext::new(token_program, cpi_accounts);
         token::mint_to(cpi_context, initial_ignis_supply);
 
         // Mint ventura to the reserve
@@ -82,7 +83,7 @@ pub mod ignis_stablecoin {
             mint: ctx.accounts.ventura_mint.to_account_info(),
             to: ctx.accounts.ventura_reserve.to_account_info(),
         };
-        let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
+        let cpi_context = CpiContext::new(token_program, cpi_accounts);
         token::mint_to(cpi_context, initial_ventura_supply);
 
         // Initialize ignis stablecoin properties
@@ -220,19 +221,19 @@ pub struct VenturaCoin {
 #[derive(Accounts)]
 pub struct Initialise<'info> {
     // Change this to include space for other fields
-    #[account(init, payer = reserve_authority, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 8 + 32, seeds=[b"ignis-stablecoin"], bump)]
+    #[account(init, payer = reserve_authority, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 8 + 32, seeds=[b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
-    #[account(init, payer = reserve_authority, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 32, seeds=[b"ventura-coin"], bump)]
+    #[account(init, payer = reserve_authority, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 32, seeds=[b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
-    #[account(init, payer = reserve_authority, space = Mint::LEN, seeds=[b"ignis-mint"], bump)]
+    #[account(init, payer = reserve_authority, space = Mint::LEN, seeds=[b"ignis_mint"], bump)]
     pub ignis_mint: Account<'info, Mint>,
-    #[account(init, payer = reserve_authority, space = Mint::LEN, seeds=[b"ventura-mint"], bump)]
+    #[account(init, payer = reserve_authority, space = Mint::LEN, seeds=[b"ventura_mint"], bump)]
     pub ventura_mint: Account<'info, Mint>,
     // Create the ignis reserve account with a PDA that will be used to give this program authority over it
-    #[account(init, payer = reserve_authority, space = TokenAccount::LEN, seeds=[b"ignis-reserve"], bump)]
+    #[account(init, payer = reserve_authority, space = TokenAccount::LEN, seeds=[b"ignis_reserve"], bump)]
     pub ignis_reserve: Account<'info, TokenAccount>,
     // Create the ventura reserve account with a PDA that will be used to give this program authority over it
-    #[account(init, payer = reserve_authority, space = TokenAccount::LEN, seeds=[b"ventura-reserve"], bump)]
+    #[account(init, payer = reserve_authority, space = TokenAccount::LEN, seeds=[b"ventura_reserve"], bump)]
     pub ventura_reserve: Account<'info, TokenAccount>,
     // The address constraint ensures that only the predefined reserve wallet can authorise this instruction
     #[account(mut, address = Pubkey::from_str("52Ygg62kTvXgurKkyezpToHGvmU51CJxLXoEoZ25HnMm").unwrap())]
@@ -242,15 +243,11 @@ pub struct Initialise<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-// impl<'info> Initialise<'info> {
-//     // pub fn
-// }
-
 #[derive(Accounts)]
 pub struct Redeem<'info> {
-    #[account(mut, seeds = [b"ignis-stablecoin"], bump)]
+    #[account(mut, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
-    #[account(mut, seeds = [b"ventura-coin"], bump)]
+    #[account(mut, seeds = [b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
     #[account(mut, token::authority = user, token::mint = ignis_stablecoin.mint)]
     pub user_ignis_account: Account<'info, TokenAccount>,
@@ -266,7 +263,7 @@ pub struct Redeem<'info> {
 
 #[derive(Accounts)]
 pub struct MintIgnis<'info> {
-    #[account(mut, has_one = reserve_authority, seeds = [b"ignis-stablecoin"], bump)]
+    #[account(mut, has_one = reserve_authority, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(mut, address = ignis_stablecoin.ignis_reserve)]
     pub ignis_reserve: Account<'info, TokenAccount>,
@@ -278,7 +275,7 @@ pub struct MintIgnis<'info> {
 
 #[derive(Accounts)]
 pub struct BurnIgnis<'info> {
-    #[account(mut, has_one = reserve_authority, seeds = [b"ignis-stablecoin"], bump)]
+    #[account(mut, has_one = reserve_authority, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(mut, address = ignis_stablecoin.ignis_reserve)]
     pub ignis_reserve: Account<'info, TokenAccount>,
