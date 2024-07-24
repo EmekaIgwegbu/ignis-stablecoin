@@ -135,6 +135,7 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
+    // TODO: High priority
     pub fn redeem_ventura(ctx: Context<Redeem>) -> Result<()> {
         Ok(())
     }
