@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{
     self, Burn, InitializeAccount, InitializeMint, Mint, MintTo, Token, TokenAccount,
 };
-use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
+// use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
 use std::str::FromStr;
 
@@ -290,7 +290,7 @@ pub struct Initialise<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction()] // TODO: figure out what this is for
+// #[instruction()] // TODO: figure out what this is for. Copied from example in Pyth docs https://docs.pyth.network/price-feeds/use-real-time-data/solana#write-contract-code
 pub struct Redeem<'info> {
     #[account(mut, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
@@ -305,7 +305,7 @@ pub struct Redeem<'info> {
     #[account(mut, address = ventura_coin.mint)]
     pub ventura_mint: Account<'info, Mint>,
     // Used to fetch the latest ventura price data
-    pub ventura_price_update: Account<'info, PriceUpdateV2>,
+    // pub ventura_price_update: Account<'info, PriceUpdateV2>,
     /// CHECK: used as a signing PDA to authorize coin minting
     pub pda_authority: UncheckedAccount<'info>,
     pub user: Signer<'info>,
