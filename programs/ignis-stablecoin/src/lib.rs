@@ -1,7 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{
-    self, Burn, InitializeAccount, InitializeMint, Mint, MintTo, Token, TokenAccount, Transfer,
+    self, Burn, InitializeAccount, InitializeMint, Mint, MintTo, Token, TokenAccount,
 };
+use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
+
 use std::str::FromStr;
 
 declare_id!("Bou8TKf8G9iJQoZMptYtFHrpgvEjG4DTTXo8sxShLsht");
@@ -18,49 +20,49 @@ pub mod ignis_stablecoin {
     ) -> Result<()> {
         // Initialise ignis mint
         token::initialize_mint(
-            ctx.accounts.initialise_mint_ctx(ctx.accounts.ignis_mint),
+            ctx.accounts.initialise_mint_ctx(&ctx.accounts.ignis_mint),
             6,                                                // ignis decimal precision
             ctx.accounts.pda_authority.to_account_info().key, // set the mint_authority to the pda_authority
             Some(ctx.accounts.pda_authority.to_account_info().key),
-        );
+        )?;
 
         // Initialize ventura mint
         token::initialize_mint(
-            ctx.accounts.initialise_mint_ctx(ctx.accounts.ventura_mint),
+            ctx.accounts.initialise_mint_ctx(&ctx.accounts.ventura_mint),
             6,                                                // ventura decimal precision
             ctx.accounts.pda_authority.to_account_info().key, // set the mint_authority to the pda_authority
             Some(ctx.accounts.pda_authority.to_account_info().key),
-        );
+        )?;
 
         // Initialize ignis reserve
         token::initialize_account(
             ctx.accounts
-                .initialise_reserve_ctx(ctx.accounts.ignis_mint, ctx.accounts.ignis_reserve)
+                .initialise_reserve_ctx(&ctx.accounts.ignis_mint, &ctx.accounts.ignis_reserve)
                 .with_signer(&[&[&[bump][..]][..]]),
-        );
+        )?;
 
         // Initialize ventura reserve
         token::initialize_account(
             ctx.accounts
-                .initialise_reserve_ctx(ctx.accounts.ventura_mint, ctx.accounts.ventura_reserve)
+                .initialise_reserve_ctx(&ctx.accounts.ventura_mint, &ctx.accounts.ventura_reserve)
                 .with_signer(&[&[&[bump][..]][..]]),
-        );
+        )?;
 
         // Mint ignis to the reserve
         token::mint_to(
             ctx.accounts
-                .mint_to_reserve_ctx(ctx.accounts.ignis_mint, ctx.accounts.ignis_reserve)
+                .mint_to_reserve_ctx(&ctx.accounts.ignis_mint, &ctx.accounts.ignis_reserve)
                 .with_signer(&[&[&[bump][..]][..]]),
             initial_ignis_supply,
-        );
+        )?;
 
         // Mint ventura to the reserve
         token::mint_to(
             ctx.accounts
-                .mint_to_reserve_ctx(ctx.accounts.ventura_mint, ctx.accounts.ventura_reserve)
+                .mint_to_reserve_ctx(&ctx.accounts.ventura_mint, &ctx.accounts.ventura_reserve)
                 .with_signer(&[&[&[bump][..]][..]]),
             initial_ventura_supply,
-        );
+        )?;
 
         // Initialize ignis stablecoin properties
         let ignis_stablecoin = &mut ctx.accounts.ignis_stablecoin;
@@ -85,33 +87,47 @@ pub mod ignis_stablecoin {
 
     pub fn redeem_ignis(ctx: Context<Redeem>, bump: u8, amount: u64) -> Result<()> {
         // TODO: Ensure that ventura is listed on the market and fetch the latest market data
+        // TODO: Calculate the equivalent ventura_amount using the market data
+
+        // let ventura_price_update = &mut ctx.accounts.ventura_price_update;
+        // let maximum_age: u64 = 30;
+        // let feed_id: [u8; 32] = get_feed_id_from_hex(
+        //     "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+        // )?;
+        // let ventura_price =
+        //     ventura_price_update.get_price_no_older_than(&Clock::get()?, maximum_age, &feed_id)?;
+
+        // let ventura_amount = ctx.accounts.ignis_stablecoin.peg
+        //     / (ventura_price.price * 10i32.pow(ventura_price.exponent));
+
+        let ventura_amount = 2; // TODO: replace this placeholder with code to compute this value
 
         // Burn ignis from the user's account
-        let cpi_program = ctx.accounts.token_program.to_account_info();
-        let cpi_accounts = Burn {
-            mint: ctx.accounts.ignis_mint.to_account_info(),
-            from: ctx.accounts.user_ignis_account.to_account_info(),
-            authority: ctx.accounts.user.to_account_info(),
-        };
-        let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
-        let cpi = token::burn(cpi_context, amount);
+        token::burn(
+            burn_ctx(
+                &ctx.accounts.token_program,
+                &ctx.accounts.user,
+                &ctx.accounts.ignis_mint,
+                &ctx.accounts.user_ignis_account,
+            ),
+            amount,
+        )?;
+
+        // Mint ventura to the user's account
+        token::mint_to(
+            mint_to_ctx(
+                &ctx.accounts.token_program,
+                &ctx.accounts.pda_authority,
+                &ctx.accounts.ventura_mint,
+                &ctx.accounts.user_ventura_account,
+            )
+            .with_signer(&[&[&[bump][..]][..]]),
+            ventura_amount,
+        )?;
 
         // Update ignis stablecoin properties
         let ignis_stablecoin = &mut ctx.accounts.ignis_stablecoin;
         ignis_stablecoin.circulating_supply -= amount;
-
-        // TODO: Calculate the equivalent ventura_amount here using the market data
-
-        // Mint ventura to the user's account
-        let cpi_program = ctx.accounts.token_program.to_account_info();
-        let cpi_accounts = MintTo {
-            authority: ctx.accounts.pda_authority.to_account_info(),
-            mint: ctx.accounts.ventura_mint.to_account_info(),
-            to: ctx.accounts.user_ventura_account.to_account_info(),
-        };
-        let cpi_context =
-            CpiContext::new(cpi_program, cpi_accounts).with_signer(&[&[&[bump][..]][..]]);
-        let cpi = token::mint_to(cpi_context, ventura_amount);
 
         // Update ventura coin properties
         let ventura_coin = &mut ctx.accounts.ventura_coin;
@@ -123,17 +139,22 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
-    pub fn mint_ignis(ctx: Context<MintIgnis>, bump: u8, amount: u64) -> Result<()> {
+    pub fn mint_to_ignis_reserve(
+        ctx: Context<MintToIgnisReserve>,
+        bump: u8,
+        amount: u64,
+    ) -> Result<()> {
         // Mint ignis to the reserve
-        let cpi_program = ctx.accounts.token_program.to_account_info();
-        let cpi_accounts = MintTo {
-            authority: ctx.accounts.pda_authority.to_account_info(),
-            mint: ctx.accounts.ignis_mint.to_account_info(),
-            to: ctx.accounts.ignis_reserve.to_account_info(),
-        };
-        let cpi_context =
-            CpiContext::new(cpi_program, cpi_accounts).with_signer(&[&[&[bump][..]][..]]);
-        token::mint_to(cpi_context, amount);
+        token::mint_to(
+            mint_to_ctx(
+                &ctx.accounts.token_program,
+                &ctx.accounts.pda_authority,
+                &ctx.accounts.ignis_mint,
+                &ctx.accounts.ignis_reserve,
+            )
+            .with_signer(&[&[&[bump][..]][..]]),
+            amount,
+        )?;
 
         // Update stablecoin properties
         let ignis_stablecoin = &mut ctx.accounts.ignis_stablecoin;
@@ -141,20 +162,26 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
-    pub fn mint_ventura(ctx: Context<MintVentura>, bump: u8, amount: u64) -> Result<()> {
+    // TODO: low priority
+    pub fn mint_to_ventura_reserve(
+        ctx: Context<MintToVenturaReserve>,
+        bump: u8,
+        amount: u64,
+    ) -> Result<()> {
         Ok(())
     }
 
-    pub fn burn_ignis(ctx: Context<BurnIgnis>, amount: u64) -> Result<()> {
+    pub fn burn_reserve_ignis(ctx: Context<BurnReserveIgnis>, amount: u64) -> Result<()> {
         // Burn ignis from the reserve
-        let cpi_program = ctx.accounts.token_program.to_account_info();
-        let cpi_accounts = Burn {
-            mint: ctx.accounts.ignis_mint.to_account_info(),
-            from: ctx.accounts.ignis_reserve.to_account_info(),
-            authority: ctx.accounts.ignis_reserve.to_account_info(),
-        };
-        let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
-        token::burn(cpi_context, amount);
+        token::burn(
+            burn_ctx(
+                &ctx.accounts.token_program,
+                &ctx.accounts.reserve_authority,
+                &ctx.accounts.ignis_mint,
+                &ctx.accounts.ignis_reserve,
+            ),
+            amount,
+        )?;
 
         // Update stablecoin properties
         let ignis_stablecoin = &mut ctx.accounts.ignis_stablecoin;
@@ -162,15 +189,8 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
-    pub fn burn_ventura(ctx: Context<BurnVentura>, amount: u64) -> Result<()> {
-        Ok(())
-    }
-
-    pub fn fetch_ignis_market_data(ctx: Context<FetchIgnisMarketData>) -> Result<()> {
-        Ok(())
-    }
-
-    pub fn fetch_ventura_market_data(ctx: Context<FetchVenturaMarketData>) -> Result<()> {
+    // TODO: low priority
+    pub fn burn_reserve_ventura(ctx: Context<BurnReserveVentura>, amount: u64) -> Result<()> {
         Ok(())
     }
 }
@@ -178,7 +198,7 @@ pub mod ignis_stablecoin {
 impl<'info> Initialise<'info> {
     pub fn initialise_mint_ctx(
         &self,
-        mint: Account<'info, Mint>,
+        mint: &Account<'info, Mint>,
     ) -> CpiContext<'_, '_, '_, 'info, InitializeMint<'info>> {
         let token_program = self.token_program.to_account_info();
         let cpi_accounts = InitializeMint {
@@ -190,8 +210,8 @@ impl<'info> Initialise<'info> {
 
     pub fn initialise_reserve_ctx(
         &self,
-        mint: Account<'info, Mint>,
-        reserve: Account<'info, TokenAccount>,
+        mint: &Account<'info, Mint>,
+        reserve: &Account<'info, TokenAccount>,
     ) -> CpiContext<'_, '_, '_, 'info, InitializeAccount<'info>> {
         let token_program = self.token_program.to_account_info();
         let cpi_accounts = InitializeAccount {
@@ -205,17 +225,41 @@ impl<'info> Initialise<'info> {
 
     pub fn mint_to_reserve_ctx(
         &self,
-        mint: Account<'info, Mint>,
-        reserve: Account<'info, TokenAccount>,
+        mint: &Account<'info, Mint>,
+        reserve: &Account<'info, TokenAccount>,
     ) -> CpiContext<'_, '_, '_, 'info, MintTo<'info>> {
-        let token_program = self.token_program.to_account_info();
-        let cpi_accounts = MintTo {
-            authority: self.pda_authority.to_account_info(),
-            mint: mint.to_account_info(),
-            to: reserve.to_account_info(),
-        };
-        CpiContext::new(token_program, cpi_accounts)
+        mint_to_ctx(&self.token_program, &self.pda_authority, &mint, &reserve)
     }
+}
+
+pub fn burn_ctx<'info>(
+    token_program: &Program<'info, Token>,
+    authority: &Signer<'info>,
+    mint: &Account<'info, Mint>,
+    from: &Account<'info, TokenAccount>,
+) -> CpiContext<'info, 'info, 'info, 'info, Burn<'info>> {
+    let token_program = token_program.to_account_info();
+    let cpi_accounts = Burn {
+        mint: mint.to_account_info(),
+        from: from.to_account_info(),
+        authority: authority.to_account_info(),
+    };
+    CpiContext::new(token_program, cpi_accounts)
+}
+
+pub fn mint_to_ctx<'info>(
+    token_program: &Program<'info, Token>,
+    authority: &UncheckedAccount<'info>,
+    mint: &Account<'info, Mint>,
+    to: &Account<'info, TokenAccount>,
+) -> CpiContext<'info, 'info, 'info, 'info, MintTo<'info>> {
+    let token_program = token_program.to_account_info();
+    let cpi_accounts = MintTo {
+        authority: authority.to_account_info(),
+        mint: mint.to_account_info(),
+        to: to.to_account_info(),
+    };
+    CpiContext::new(token_program, cpi_accounts)
 }
 
 #[derive(Accounts)]
@@ -238,7 +282,7 @@ pub struct Initialise<'info> {
     // The address constraint ensures that only the predefined reserve wallet can authorise this instruction
     #[account(mut, address = Pubkey::from_str("52Ygg62kTvXgurKkyezpToHGvmU51CJxLXoEoZ25HnMm").unwrap())]
     pub reserve_authority: Signer<'info>,
-    /// CHECK: only used as a signing PDA to give this program signing authority over the mint and reserve accounts
+    /// CHECK: PDA is generated to give this program signing authority over the mint and reserve accounts
     pub pda_authority: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -246,6 +290,7 @@ pub struct Initialise<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction()] // TODO: figure out what this is for
 pub struct Redeem<'info> {
     #[account(mut, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
@@ -259,6 +304,8 @@ pub struct Redeem<'info> {
     pub ignis_mint: Account<'info, Mint>,
     #[account(mut, address = ventura_coin.mint)]
     pub ventura_mint: Account<'info, Mint>,
+    // Used to fetch the latest ventura price data
+    pub ventura_price_update: Account<'info, PriceUpdateV2>,
     /// CHECK: used as a signing PDA to authorize coin minting
     pub pda_authority: UncheckedAccount<'info>,
     pub user: Signer<'info>,
@@ -266,7 +313,7 @@ pub struct Redeem<'info> {
 }
 
 #[derive(Accounts)]
-pub struct MintIgnis<'info> {
+pub struct MintToIgnisReserve<'info> {
     #[account(mut, has_one = reserve_authority, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(mut, address = ignis_stablecoin.ignis_reserve)]
@@ -280,7 +327,7 @@ pub struct MintIgnis<'info> {
 }
 
 #[derive(Accounts)]
-pub struct BurnIgnis<'info> {
+pub struct BurnReserveIgnis<'info> {
     #[account(mut, has_one = reserve_authority, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(mut, address = ignis_stablecoin.ignis_reserve)]
@@ -291,41 +338,31 @@ pub struct BurnIgnis<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-// TODO
+// TODO: low priority
 #[derive(Accounts)]
-pub struct MintVentura {}
+pub struct MintToVenturaReserve {}
 
-// TODO
+// TODO: low priority
 #[derive(Accounts)]
-pub struct BurnVentura {}
-
-// TODO
-#[derive(Accounts)]
-pub struct FetchIgnisMarketData {
-    // pub market_oracle: Account<'info>,
-}
-
-// TODO
-#[derive(Accounts)]
-pub struct FetchVenturaMarketData {}
+pub struct BurnReserveVentura {}
 
 #[account]
 pub struct IgnisStablecoin {
-    // TODO: Include name, symbol, image and other metadata
-    pub reserve_amount: u64, // The amount of ignis in reserves, as measured in microignis (millionths of ignis)
-    pub circulating_supply: u64, // The amount of ignis in circulation (excludes reserves) as measured in microignis
-    pub mint: Pubkey,            // The address of the mint account
-    pub ignis_reserve: Pubkey, // The address of the token account that belongs to the ignis reserve
+    // TODO (low priority): Include name, symbol, image and other metadata
+    pub reserve_amount: u64, // measured in microignis (millionths of ignis)
+    pub circulating_supply: u64, // excludes reserve_amount, measured in microignis
+    pub mint: Pubkey,        // mint account address
+    pub ignis_reserve: Pubkey, // address of the ignis token account that belongs to the reserve
     pub peg: f64,
-    pub reserve_authority: Pubkey, // The party that has authority over the coin reserves.
+    pub reserve_authority: Pubkey, // signing authority representing the reserve
 }
 
 #[account]
 pub struct VenturaCoin {
-    // TODO: Include name, symbol, image and other metadata
-    pub reserve_amount: u64, // The amount of ventura in reserves, as measured in microventura (millionths of ventura)
-    pub circulating_supply: u64, // The amount of ventura in circulation (excludes reserves) as measured in microventura
-    pub mint: Pubkey,            // The address of the mint account
-    pub ventura_reserve: Pubkey, // The address of the token account that belongs to the ventura reserve
-    pub reserve_authority: Pubkey, // The party that has authority over the coin reserves.
+    // TODO (low priority): Include name, symbol, image and other metadata
+    pub reserve_amount: u64, // measured in microventura (millionths of ventura)
+    pub circulating_supply: u64, // excludes reserve_amount, measured in microventura
+    pub mint: Pubkey,        // mint account address
+    pub ventura_reserve: Pubkey, // address of the ventura token account that belongs to the reserve
+    pub reserve_authority: Pubkey, // signing authority representing the reserve
 }
