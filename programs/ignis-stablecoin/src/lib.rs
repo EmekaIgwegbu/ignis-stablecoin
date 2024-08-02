@@ -163,12 +163,26 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
-    // TODO: low priority
     pub fn mint_to_ventura_reserve(
         ctx: Context<MintToVenturaReserve>,
         bump: u8,
         amount: u64,
     ) -> Result<()> {
+        // Mint ventura to the reserve
+        token::mint_to(
+            mint_to_ctx(
+                &ctx.accounts.token_program,
+                &ctx.accounts.pda_authority,
+                &ctx.accounts.ventura_mint,
+                &ctx.accounts.ventura_reserve,
+            )
+            .with_signer(&[&[&[bump][..]][..]]),
+            amount,
+        )?;
+
+        // Update coin properties
+        let ventura_coin = &mut ctx.accounts.ventura_coin;
+        ventura_coin.reserve_amount += amount;
         Ok(())
     }
 
@@ -190,8 +204,21 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
-    // TODO: low priority
     pub fn burn_reserve_ventura(ctx: Context<BurnReserveVentura>, amount: u64) -> Result<()> {
+        // Burn ventura from the reserve
+        token::burn(
+            burn_ctx(
+                &ctx.accounts.token_program,
+                &ctx.accounts.reserve_authority,
+                &ctx.accounts.ventura_mint,
+                &ctx.accounts.ventura_reserve,
+            ),
+            amount,
+        )?;
+
+        // Update coin properties
+        let ventura_coin = &mut ctx.accounts.ventura_coin;
+        ventura_coin.reserve_amount -= amount;
         Ok(())
     }
 }
@@ -323,6 +350,7 @@ pub struct MintToIgnisReserve<'info> {
     pub ignis_mint: Account<'info, Mint>,
     /// CHECK: used as a signing PDA to authorize coin minting
     pub pda_authority: UncheckedAccount<'info>,
+    // This must satisfy the has_one constraint on ignis_stablecoin
     pub reserve_authority: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
@@ -335,17 +363,40 @@ pub struct BurnReserveIgnis<'info> {
     pub ignis_reserve: Account<'info, TokenAccount>,
     #[account(mut, address = ignis_stablecoin.mint)]
     pub ignis_mint: Account<'info, Mint>,
+    // This must satisfy the has_one constraint on ignis_stablecoin
     pub reserve_authority: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 
 // TODO: low priority
 #[derive(Accounts)]
-pub struct MintToVenturaReserve {}
+pub struct MintToVenturaReserve<'info> {
+    #[account(mut, has_one = reserve_authority, seeds = [b"ventura_coin"], bump)]
+    pub ventura_coin: Account<'info, VenturaCoin>,
+    #[account(mut, address = ventura_coin.ventura_reserve)]
+    pub ventura_reserve: Account<'info, TokenAccount>,
+    #[account(mut, address = ventura_coin.mint)]
+    pub ventura_mint: Account<'info, Mint>,
+    /// CHECK: used as a signing PDA to authorize coin minting
+    pub pda_authority: UncheckedAccount<'info>,
+    // This must satisfy the has_one constraint on ignis_stablecoin
+    pub reserve_authority: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+}
 
 // TODO: low priority
 #[derive(Accounts)]
-pub struct BurnReserveVentura {}
+pub struct BurnReserveVentura<'info> {
+    #[account(mut, has_one = reserve_authority, seeds = [b"ventura_coin"], bump)]
+    pub ventura_coin: Account<'info, VenturaCoin>,
+    #[account(mut, address = ventura_coin.ventura_reserve)]
+    pub ventura_reserve: Account<'info, TokenAccount>,
+    #[account(mut, address = ventura_coin.mint)]
+    pub ventura_mint: Account<'info, Mint>,
+    // This must satisfy the has_one constraint on ignis_stablecoin
+    pub reserve_authority: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+}
 
 #[account]
 pub struct IgnisStablecoin {
