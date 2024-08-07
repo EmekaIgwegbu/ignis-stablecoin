@@ -447,7 +447,6 @@ pub struct BurnReserveIgnis<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-// TODO: low priority
 #[derive(Accounts)]
 pub struct MintToVenturaReserve<'info> {
     #[account(mut, has_one = reserve_authority, seeds = [b"ventura_coin"], bump)]
@@ -464,7 +463,6 @@ pub struct MintToVenturaReserve<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-// TODO: low priority
 #[derive(Accounts)]
 pub struct BurnReserveVentura<'info> {
     #[account(mut, has_one = reserve_authority, seeds = [b"ventura_coin"], bump)]
