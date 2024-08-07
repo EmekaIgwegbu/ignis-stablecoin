@@ -14,7 +14,6 @@ pub mod ignis_stablecoin {
 
     pub fn initialise(
         ctx: Context<Initialise>,
-        bump: u8,
         initial_ignis_supply: u64,
         initial_ventura_supply: u64,
     ) -> Result<()> {
@@ -46,7 +45,7 @@ pub mod ignis_stablecoin {
             &ctx.accounts.ignis_mint,
             &ctx.accounts.ignis_reserve,
             &ctx.accounts.signing_pda,
-            bump,
+            ctx.bumps.signing_pda,
             initial_ignis_supply,
         )?;
 
@@ -56,7 +55,7 @@ pub mod ignis_stablecoin {
             &ctx.accounts.ventura_mint,
             &ctx.accounts.ventura_reserve,
             &ctx.accounts.signing_pda,
-            bump,
+            ctx.bumps.signing_pda,
             initial_ventura_supply,
         )?;
 
@@ -81,7 +80,7 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
-    pub fn redeem_ignis(ctx: Context<Redeem>, bump: u8, amount: u64) -> Result<()> {
+    pub fn redeem_ignis(ctx: Context<Redeem>, amount: u64) -> Result<()> {
         // TODO: Ensure that ventura is listed on the market and fetch the latest market data
         // TODO: Calculate the equivalent ventura_amount using the market data
 
@@ -105,7 +104,7 @@ pub mod ignis_stablecoin {
         token::mint_to(
             ctx.accounts
                 .mint_to_user_ctx(Coin::Ventura)
-                .with_signer(&[&[&[bump][..]][..]]),
+                .with_signer(&[&[&[ctx.bumps.signing_pda][..]][..]]),
             ventura_amount,
         )?;
 
@@ -119,7 +118,7 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
-    pub fn redeem_ventura(ctx: Context<Redeem>, bump: u8, amount: u64) -> Result<()> {
+    pub fn redeem_ventura(ctx: Context<Redeem>, amount: u64) -> Result<()> {
         // TODO: Ensure that ventura is listed on the market and fetch the latest market data
         // TODO: Calculate the equivalent ignis_amount using the market data
         let ignis_amount = 2; // TODO: replace this placeholder with code to compute this value
@@ -131,7 +130,7 @@ pub mod ignis_stablecoin {
         token::mint_to(
             ctx.accounts
                 .mint_to_user_ctx(Coin::Ignis)
-                .with_signer(&[&[&[bump][..]][..]]),
+                .with_signer(&[&[&[ctx.bumps.signing_pda][..]][..]]),
             ignis_amount,
         )?;
 
@@ -166,18 +165,14 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
-    pub fn mint_to_ventura_reserve(
-        ctx: Context<MintToVenturaReserve>,
-        bump: u8,
-        amount: u64,
-    ) -> Result<()> {
+    pub fn mint_to_ventura_reserve(ctx: Context<MintToVenturaReserve>, amount: u64) -> Result<()> {
         // Mint ventura to the reserve
         crate::mint_to_reserve(
             &ctx.accounts.token_program,
             &ctx.accounts.ventura_mint,
             &ctx.accounts.ventura_reserve,
             &ctx.accounts.signing_pda,
-            bump,
+            ctx.bumps.signing_pda,
             amount,
         )?;
 
@@ -187,14 +182,14 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
-    pub fn burn_reserve_ignis(ctx: Context<BurnReserveIgnis>, bump: u8, amount: u64) -> Result<()> {
+    pub fn burn_reserve_ignis(ctx: Context<BurnReserveIgnis>, amount: u64) -> Result<()> {
         // Burn ignis from the reserve
         crate::burn_from_reserve(
             &ctx.accounts.token_program,
             &ctx.accounts.ignis_mint,
             &ctx.accounts.ignis_reserve,
             &ctx.accounts.signing_pda,
-            bump,
+            ctx.bumps.signing_pda,
             amount,
         )?;
 
@@ -204,18 +199,14 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
-    pub fn burn_reserve_ventura(
-        ctx: Context<BurnReserveVentura>,
-        bump: u8,
-        amount: u64,
-    ) -> Result<()> {
+    pub fn burn_reserve_ventura(ctx: Context<BurnReserveVentura>, amount: u64) -> Result<()> {
         // Burn ventura from the reserve
         crate::burn_from_reserve(
             &ctx.accounts.token_program,
             &ctx.accounts.ventura_mint,
             &ctx.accounts.ventura_reserve,
             &ctx.accounts.signing_pda,
-            bump,
+            ctx.bumps.signing_pda,
             amount,
         )?;
 
@@ -318,7 +309,7 @@ impl<'info> Redeem<'info> {
         }
 
         let cpi_accounts = MintTo {
-            authority: self.user.to_account_info(),
+            authority: self.signing_pda.to_account_info(),
             mint: mint.to_account_info(),
             to: user_token_account.to_account_info(),
         };
@@ -332,7 +323,7 @@ pub fn mint_to_reserve<'info>(
     token_mint: &Account<'info, Mint>,
     token_reserve: &Account<'info, TokenAccount>,
     signing_pda: &UncheckedAccount<'info>,
-    pda_bump: u8,
+    signing_pda_bump: u8,
     amount: u64,
 ) -> Result<()> {
     let token_program = token_program.to_account_info();
@@ -343,7 +334,10 @@ pub fn mint_to_reserve<'info>(
     };
     let cpi_ctx = CpiContext::new(token_program, cpi_accounts);
 
-    token::mint_to(cpi_ctx.with_signer(&[&[&[pda_bump][..]][..]]), amount)
+    token::mint_to(
+        cpi_ctx.with_signer(&[&[&[signing_pda_bump][..]][..]]),
+        amount,
+    )
 }
 
 pub fn burn_from_reserve<'info>(
@@ -351,7 +345,7 @@ pub fn burn_from_reserve<'info>(
     token_mint: &Account<'info, Mint>,
     token_reserve: &Account<'info, TokenAccount>,
     signing_pda: &UncheckedAccount<'info>,
-    pda_bump: u8,
+    signing_pda_bump: u8,
     amount: u64,
 ) -> Result<()> {
     let token_program = token_program.to_account_info();
@@ -362,7 +356,10 @@ pub fn burn_from_reserve<'info>(
     };
     let cpi_ctx = CpiContext::new(token_program, cpi_accounts);
 
-    token::burn(cpi_ctx.with_signer(&[&[&[pda_bump][..]][..]]), amount)
+    token::burn(
+        cpi_ctx.with_signer(&[&[&[signing_pda_bump][..]][..]]),
+        amount,
+    )
 }
 
 #[derive(Accounts)]
