@@ -21,17 +21,17 @@ pub mod ignis_stablecoin {
         // Initialise ignis mint
         token::initialize_mint(
             ctx.accounts.initialise_mint_ctx(Coin::Ignis),
-            6,                                                // ignis decimal precision
-            ctx.accounts.pda_authority.to_account_info().key, // set the mint_authority to the pda_authority
-            Some(ctx.accounts.pda_authority.to_account_info().key),
+            6,                                              // ignis decimal precision
+            ctx.accounts.signing_pda.to_account_info().key, // set the mint_authority to the signing_pda
+            Some(ctx.accounts.signing_pda.to_account_info().key),
         )?;
 
         // Initialize ventura mint
         token::initialize_mint(
             ctx.accounts.initialise_mint_ctx(Coin::Ventura),
-            6,                                                // ventura decimal precision
-            ctx.accounts.pda_authority.to_account_info().key, // set the mint_authority to the pda_authority
-            Some(ctx.accounts.pda_authority.to_account_info().key),
+            6,                                              // ventura decimal precision
+            ctx.accounts.signing_pda.to_account_info().key, // set the mint_authority to the signing_pda
+            Some(ctx.accounts.signing_pda.to_account_info().key),
         )?;
 
         // Initialize ignis reserve
@@ -45,7 +45,7 @@ pub mod ignis_stablecoin {
             &ctx.accounts.token_program,
             &ctx.accounts.ignis_mint,
             &ctx.accounts.ignis_reserve,
-            &ctx.accounts.pda_authority,
+            &ctx.accounts.signing_pda,
             bump,
             initial_ignis_supply,
         )?;
@@ -55,7 +55,7 @@ pub mod ignis_stablecoin {
             &ctx.accounts.token_program,
             &ctx.accounts.ventura_mint,
             &ctx.accounts.ventura_reserve,
-            &ctx.accounts.pda_authority,
+            &ctx.accounts.signing_pda,
             bump,
             initial_ventura_supply,
         )?;
@@ -68,7 +68,7 @@ pub mod ignis_stablecoin {
         ignis_stablecoin.mint = ctx.accounts.ignis_mint.to_account_info().key();
         ignis_stablecoin.ignis_reserve = ctx.accounts.ignis_reserve.to_account_info().key();
         ignis_stablecoin.peg = 1.0;
-        ignis_stablecoin.reserve_authority = ctx.accounts.reserve_authority.key();
+        ignis_stablecoin.reserve_wallet = ctx.accounts.reserve_wallet.key();
 
         // Initialize ventura coin properties
         let ventura_coin = &mut ctx.accounts.ventura_coin;
@@ -76,7 +76,7 @@ pub mod ignis_stablecoin {
         ventura_coin.circulating_supply = 0;
         ventura_coin.mint = ctx.accounts.ventura_mint.to_account_info().key();
         ventura_coin.ventura_reserve = ctx.accounts.ventura_reserve.to_account_info().key();
-        ventura_coin.reserve_authority = ctx.accounts.reserve_authority.key();
+        ventura_coin.reserve_wallet = ctx.accounts.reserve_wallet.key();
 
         Ok(())
     }
@@ -155,7 +155,7 @@ pub mod ignis_stablecoin {
             &ctx.accounts.token_program,
             &ctx.accounts.ignis_mint,
             &ctx.accounts.ignis_reserve,
-            &ctx.accounts.pda_authority,
+            &ctx.accounts.signing_pda,
             bump,
             amount,
         )?;
@@ -176,7 +176,7 @@ pub mod ignis_stablecoin {
             &ctx.accounts.token_program,
             &ctx.accounts.ventura_mint,
             &ctx.accounts.ventura_reserve,
-            &ctx.accounts.pda_authority,
+            &ctx.accounts.signing_pda,
             bump,
             amount,
         )?;
@@ -193,7 +193,7 @@ pub mod ignis_stablecoin {
             &ctx.accounts.token_program,
             &ctx.accounts.ignis_mint,
             &ctx.accounts.ignis_reserve,
-            &ctx.accounts.pda_authority,
+            &ctx.accounts.signing_pda,
             bump,
             amount,
         )?;
@@ -214,7 +214,7 @@ pub mod ignis_stablecoin {
             &ctx.accounts.token_program,
             &ctx.accounts.ventura_mint,
             &ctx.accounts.ventura_reserve,
-            &ctx.accounts.pda_authority,
+            &ctx.accounts.signing_pda,
             bump,
             amount,
         )?;
@@ -268,7 +268,7 @@ impl<'info> Initialise<'info> {
         let cpi_accounts = InitializeAccount {
             account: reserve.to_account_info(),
             mint: mint.to_account_info(),
-            authority: self.pda_authority.to_account_info(),
+            authority: self.signing_pda.to_account_info(),
             rent: self.rent.to_account_info(),
         };
         CpiContext::new(token_program, cpi_accounts)
@@ -331,13 +331,13 @@ pub fn mint_to_reserve<'info>(
     token_program: &Program<'info, Token>,
     token_mint: &Account<'info, Mint>,
     token_reserve: &Account<'info, TokenAccount>,
-    pda_authority: &UncheckedAccount<'info>,
+    signing_pda: &UncheckedAccount<'info>,
     pda_bump: u8,
     amount: u64,
 ) -> Result<()> {
     let token_program = token_program.to_account_info();
     let cpi_accounts = MintTo {
-        authority: pda_authority.to_account_info(),
+        authority: signing_pda.to_account_info(),
         mint: token_mint.to_account_info(),
         to: token_reserve.to_account_info(),
     };
@@ -350,13 +350,13 @@ pub fn burn_from_reserve<'info>(
     token_program: &Program<'info, Token>,
     token_mint: &Account<'info, Mint>,
     token_reserve: &Account<'info, TokenAccount>,
-    pda_authority: &UncheckedAccount<'info>,
+    signing_pda: &UncheckedAccount<'info>,
     pda_bump: u8,
     amount: u64,
 ) -> Result<()> {
     let token_program = token_program.to_account_info();
     let cpi_accounts = Burn {
-        authority: pda_authority.to_account_info(),
+        authority: signing_pda.to_account_info(),
         mint: token_mint.to_account_info(),
         from: token_reserve.to_account_info(),
     };
@@ -368,24 +368,24 @@ pub fn burn_from_reserve<'info>(
 #[derive(Accounts)]
 pub struct Initialise<'info> {
     // Change this to include space for other fields
-    #[account(init, payer = reserve_authority, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 8 + 32, seeds=[b"ignis_stablecoin"], bump)]
+    #[account(init, payer = reserve_wallet, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 8 + 32, seeds=[b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
-    #[account(init, payer = reserve_authority, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 32, seeds=[b"ventura_coin"], bump)]
+    #[account(init, payer = reserve_wallet, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 32, seeds=[b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
-    #[account(init, payer = reserve_authority, space = Mint::LEN)]
+    #[account(init, payer = reserve_wallet, space = Mint::LEN)]
     pub ignis_mint: Account<'info, Mint>,
-    #[account(init, payer = reserve_authority, space = Mint::LEN)]
+    #[account(init, payer = reserve_wallet, space = Mint::LEN)]
     pub ventura_mint: Account<'info, Mint>,
-    #[account(init, payer = reserve_authority, space = TokenAccount::LEN)]
+    #[account(init, payer = reserve_wallet, space = TokenAccount::LEN)]
     pub ignis_reserve: Account<'info, TokenAccount>,
-    #[account(init, payer = reserve_authority, space = TokenAccount::LEN)]
+    #[account(init, payer = reserve_wallet, space = TokenAccount::LEN)]
     pub ventura_reserve: Account<'info, TokenAccount>,
     // The address constraint ensures that only the predefined reserve wallet can authorise this instruction
     #[account(mut, address = Pubkey::from_str("52Ygg62kTvXgurKkyezpToHGvmU51CJxLXoEoZ25HnMm").unwrap())]
-    pub reserve_authority: Signer<'info>,
+    pub reserve_wallet: Signer<'info>,
     /// CHECK: PDA is generated to give this program signing authority over the mint and reserve accounts
     #[account(seeds=[], bump)]
-    pub pda_authority: UncheckedAccount<'info>,
+    pub signing_pda: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -410,14 +410,14 @@ pub struct Redeem<'info> {
     // pub ventura_price_update: Account<'info, PriceUpdateV2>,
     /// CHECK: used as a signing PDA to authorize coin minting
     #[account(seeds=[], bump)]
-    pub pda_authority: UncheckedAccount<'info>,
+    pub signing_pda: UncheckedAccount<'info>,
     pub user: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
 pub struct MintToIgnisReserve<'info> {
-    #[account(mut, has_one = reserve_authority, seeds = [b"ignis_stablecoin"], bump)]
+    #[account(mut, has_one = reserve_wallet, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(mut, address = ignis_stablecoin.ignis_reserve)]
     pub ignis_reserve: Account<'info, TokenAccount>,
@@ -425,15 +425,15 @@ pub struct MintToIgnisReserve<'info> {
     pub ignis_mint: Account<'info, Mint>,
     /// CHECK: used as a signing PDA to authorize coin minting
     #[account(seeds=[], bump)]
-    pub pda_authority: UncheckedAccount<'info>,
+    pub signing_pda: UncheckedAccount<'info>,
     // This must satisfy the has_one constraint on ignis_stablecoin
-    pub reserve_authority: Signer<'info>,
+    pub reserve_wallet: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
 pub struct BurnReserveIgnis<'info> {
-    #[account(mut, has_one = reserve_authority, seeds = [b"ignis_stablecoin"], bump)]
+    #[account(mut, has_one = reserve_wallet, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(mut, address = ignis_stablecoin.ignis_reserve)]
     pub ignis_reserve: Account<'info, TokenAccount>,
@@ -441,15 +441,15 @@ pub struct BurnReserveIgnis<'info> {
     pub ignis_mint: Account<'info, Mint>,
     /// CHECK: used as a signing PDA to authorize coin minting
     #[account(seeds=[], bump)]
-    pub pda_authority: UncheckedAccount<'info>,
+    pub signing_pda: UncheckedAccount<'info>,
     // This must satisfy the has_one constraint on ignis_stablecoin
-    pub reserve_authority: Signer<'info>,
+    pub reserve_wallet: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
 pub struct MintToVenturaReserve<'info> {
-    #[account(mut, has_one = reserve_authority, seeds = [b"ventura_coin"], bump)]
+    #[account(mut, has_one = reserve_wallet, seeds = [b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
     #[account(mut, address = ventura_coin.ventura_reserve)]
     pub ventura_reserve: Account<'info, TokenAccount>,
@@ -457,15 +457,15 @@ pub struct MintToVenturaReserve<'info> {
     pub ventura_mint: Account<'info, Mint>,
     /// CHECK: used as a signing PDA to authorize coin minting
     #[account(seeds=[], bump)]
-    pub pda_authority: UncheckedAccount<'info>,
+    pub signing_pda: UncheckedAccount<'info>,
     // This must satisfy the has_one constraint on ignis_stablecoin
-    pub reserve_authority: Signer<'info>,
+    pub reserve_wallet: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
 pub struct BurnReserveVentura<'info> {
-    #[account(mut, has_one = reserve_authority, seeds = [b"ventura_coin"], bump)]
+    #[account(mut, has_one = reserve_wallet, seeds = [b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
     #[account(mut, address = ventura_coin.ventura_reserve)]
     pub ventura_reserve: Account<'info, TokenAccount>,
@@ -473,9 +473,9 @@ pub struct BurnReserveVentura<'info> {
     pub ventura_mint: Account<'info, Mint>,
     /// CHECK: used as a signing PDA to authorize coin minting
     #[account(seeds=[], bump)]
-    pub pda_authority: UncheckedAccount<'info>,
+    pub signing_pda: UncheckedAccount<'info>,
     // This must satisfy the has_one constraint on ignis_stablecoin
-    pub reserve_authority: Signer<'info>,
+    pub reserve_wallet: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 
@@ -487,7 +487,7 @@ pub struct IgnisStablecoin {
     pub mint: Pubkey,        // mint account address
     pub ignis_reserve: Pubkey, // address of the ignis token account that belongs to the reserve
     pub peg: f64,
-    pub reserve_authority: Pubkey, // signing authority representing the reserve
+    pub reserve_wallet: Pubkey, // signing authority for the reserve
 }
 
 #[account]
@@ -497,7 +497,7 @@ pub struct VenturaCoin {
     pub circulating_supply: u64, // excludes reserve_amount, measured in microventura
     pub mint: Pubkey,        // mint account address
     pub ventura_reserve: Pubkey, // address of the ventura token account that belongs to the reserve
-    pub reserve_authority: Pubkey, // signing authority representing the reserve
+    pub reserve_wallet: Pubkey, // signing authority for the reserve
 }
 
 pub enum Coin {
