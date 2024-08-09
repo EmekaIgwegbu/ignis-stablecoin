@@ -40,7 +40,7 @@ pub mod ignis_stablecoin {
         token::initialize_account(ctx.accounts.initialise_reserve_ctx(Coin::Ventura))?;
 
         // Mint ignis to the reserve
-        crate::mint_to_reserve(
+        crate::mint_to(
             &ctx.accounts.token_program,
             &ctx.accounts.ignis_mint,
             &ctx.accounts.ignis_reserve,
@@ -50,7 +50,7 @@ pub mod ignis_stablecoin {
         )?;
 
         // Mint ventura to the reserve
-        crate::mint_to_reserve(
+        crate::mint_to(
             &ctx.accounts.token_program,
             &ctx.accounts.ventura_mint,
             &ctx.accounts.ventura_reserve,
@@ -144,41 +144,51 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
-    pub fn mint_to_ignis_reserve(
-        ctx: Context<MintToIgnisReserve>,
-        bump: u8,
-        amount: u64,
-    ) -> Result<()> {
+    pub fn mint_ignis_to(ctx: Context<MintIgnisTo>, bump: u8, amount: u64) -> Result<()> {
         // Mint ignis to the reserve
-        crate::mint_to_reserve(
+        crate::mint_to(
             &ctx.accounts.token_program,
             &ctx.accounts.ignis_mint,
-            &ctx.accounts.ignis_reserve,
+            &ctx.accounts.to,
             &ctx.accounts.signing_pda,
             bump,
             amount,
         )?;
 
-        // Update stablecoin properties
         let ignis_stablecoin = &mut ctx.accounts.ignis_stablecoin;
-        ignis_stablecoin.reserve_amount += amount;
+        let to = &ctx.accounts.to;
+
+        // Update stablecoin properties
+        if to.key() == ignis_stablecoin.ignis_reserve {
+            ignis_stablecoin.reserve_amount += amount;
+        } else {
+            ignis_stablecoin.circulating_supply += amount;
+        }
+
         Ok(())
     }
 
-    pub fn mint_to_ventura_reserve(ctx: Context<MintToVenturaReserve>, amount: u64) -> Result<()> {
-        // Mint ventura to the reserve
-        crate::mint_to_reserve(
+    pub fn mint_ventura_to(ctx: Context<MintVenturaTo>, amount: u64) -> Result<()> {
+        // Mint ventura to the target account
+        crate::mint_to(
             &ctx.accounts.token_program,
             &ctx.accounts.ventura_mint,
-            &ctx.accounts.ventura_reserve,
+            &ctx.accounts.to,
             &ctx.accounts.signing_pda,
             ctx.bumps.signing_pda,
             amount,
         )?;
 
-        // Update coin properties
         let ventura_coin = &mut ctx.accounts.ventura_coin;
-        ventura_coin.reserve_amount += amount;
+        let to = &ctx.accounts.to;
+
+        // Update coin properties
+        if to.key() == ventura_coin.ventura_reserve {
+            ventura_coin.reserve_amount += amount;
+        } else {
+            ventura_coin.circulating_supply += amount;
+        }
+
         Ok(())
     }
 
@@ -318,10 +328,10 @@ impl<'info> Redeem<'info> {
     }
 }
 
-pub fn mint_to_reserve<'info>(
+pub fn mint_to<'info>(
     token_program: &Program<'info, Token>,
     token_mint: &Account<'info, Mint>,
-    token_reserve: &Account<'info, TokenAccount>,
+    to: &Account<'info, TokenAccount>,
     signing_pda: &UncheckedAccount<'info>,
     signing_pda_bump: u8,
     amount: u64,
@@ -330,7 +340,7 @@ pub fn mint_to_reserve<'info>(
     let cpi_accounts = MintTo {
         authority: signing_pda.to_account_info(),
         mint: token_mint.to_account_info(),
-        to: token_reserve.to_account_info(),
+        to: to.to_account_info(),
     };
     let cpi_ctx = CpiContext::new(token_program, cpi_accounts);
 
@@ -413,11 +423,11 @@ pub struct Redeem<'info> {
 }
 
 #[derive(Accounts)]
-pub struct MintToIgnisReserve<'info> {
+pub struct MintIgnisTo<'info> {
     #[account(mut, has_one = reserve_wallet, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
-    #[account(mut, address = ignis_stablecoin.ignis_reserve)]
-    pub ignis_reserve: Account<'info, TokenAccount>,
+    #[account(mut, token::mint = ignis_stablecoin.mint)]
+    pub to: Account<'info, TokenAccount>,
     #[account(mut, address = ignis_stablecoin.mint)]
     pub ignis_mint: Account<'info, Mint>,
     /// CHECK: used as a signing PDA to authorize coin minting
@@ -445,11 +455,11 @@ pub struct BurnReserveIgnis<'info> {
 }
 
 #[derive(Accounts)]
-pub struct MintToVenturaReserve<'info> {
+pub struct MintVenturaTo<'info> {
     #[account(mut, has_one = reserve_wallet, seeds = [b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
-    #[account(mut, address = ventura_coin.ventura_reserve)]
-    pub ventura_reserve: Account<'info, TokenAccount>,
+    #[account(mut, token::mint = ventura_coin.mint)]
+    pub to: Account<'info, TokenAccount>,
     #[account(mut, address = ventura_coin.mint)]
     pub ventura_mint: Account<'info, Mint>,
     /// CHECK: used as a signing PDA to authorize coin minting
