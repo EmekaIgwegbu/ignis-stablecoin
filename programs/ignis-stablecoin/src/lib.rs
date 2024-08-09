@@ -144,14 +144,14 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
-    pub fn mint_ignis_to(ctx: Context<MintIgnisTo>, bump: u8, amount: u64) -> Result<()> {
+    pub fn mint_ignis_to(ctx: Context<MintIgnisTo>, amount: u64) -> Result<()> {
         // Mint ignis to the reserve
         crate::mint_to(
             &ctx.accounts.token_program,
             &ctx.accounts.ignis_mint,
             &ctx.accounts.to,
             &ctx.accounts.signing_pda,
-            bump,
+            ctx.bumps.signing_pda,
             amount,
         )?;
 
