@@ -379,13 +379,13 @@ pub struct Initialise<'info> {
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(init, payer = reserve_wallet, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 32, seeds=[b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
-    #[account(init, payer = reserve_wallet, space = Mint::LEN)]
+    #[account(init, payer = reserve_wallet, space = Mint::LEN, seeds=[b"ignis_mint"], bump)]
     pub ignis_mint: Account<'info, Mint>,
-    #[account(init, payer = reserve_wallet, space = Mint::LEN)]
+    #[account(init, payer = reserve_wallet, space = Mint::LEN, seeds=[b"ventura_mint"], bump)]
     pub ventura_mint: Account<'info, Mint>,
-    #[account(init, payer = reserve_wallet, space = TokenAccount::LEN)]
+    #[account(init, payer = reserve_wallet, space = TokenAccount::LEN, seeds=[b"ignis_reserve"], bump)]
     pub ignis_reserve: Account<'info, TokenAccount>,
-    #[account(init, payer = reserve_wallet, space = TokenAccount::LEN)]
+    #[account(init, payer = reserve_wallet, space = TokenAccount::LEN, seeds=[b"ventura_reserve"], bump)]
     pub ventura_reserve: Account<'info, TokenAccount>,
     // The address constraint ensures that only the predefined reserve wallet can authorise this instruction
     #[account(mut, address = Pubkey::from_str("52Ygg62kTvXgurKkyezpToHGvmU51CJxLXoEoZ25HnMm").unwrap())]
@@ -409,9 +409,9 @@ pub struct Redeem<'info> {
     pub user_ignis_account: Account<'info, TokenAccount>,
     #[account(mut, token::authority = user, token::mint = ventura_coin.mint)]
     pub user_ventura_account: Account<'info, TokenAccount>,
-    #[account(mut, address = ignis_stablecoin.mint)]
+    #[account(mut, seeds=[b"ignis_mint"], bump)]
     pub ignis_mint: Account<'info, Mint>,
-    #[account(mut, address = ventura_coin.mint)]
+    #[account(mut, seeds=[b"ventura_mint"], bump)]
     pub ventura_mint: Account<'info, Mint>,
     // Used to fetch the latest ventura price data
     // pub ventura_price_update: Account<'info, PriceUpdateV2>,
@@ -428,7 +428,7 @@ pub struct MintIgnisTo<'info> {
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(mut, token::mint = ignis_stablecoin.mint)]
     pub to: Account<'info, TokenAccount>,
-    #[account(mut, address = ignis_stablecoin.mint)]
+    #[account(mut, seeds=[b"ignis_mint"], bump)]
     pub ignis_mint: Account<'info, Mint>,
     /// CHECK: used as a signing PDA to authorize coin minting
     #[account(seeds=[], bump)]
@@ -442,9 +442,9 @@ pub struct MintIgnisTo<'info> {
 pub struct BurnReserveIgnis<'info> {
     #[account(mut, has_one = reserve_wallet, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
-    #[account(mut, address = ignis_stablecoin.ignis_reserve)]
+    #[account(mut, seeds=[b"ignis_reserve"], bump)]
     pub ignis_reserve: Account<'info, TokenAccount>,
-    #[account(mut, address = ignis_stablecoin.mint)]
+    #[account(mut, seeds=[b"ignis_mint"], bump)]
     pub ignis_mint: Account<'info, Mint>,
     /// CHECK: used as a signing PDA to authorize coin minting
     #[account(seeds=[], bump)]
@@ -460,7 +460,7 @@ pub struct MintVenturaTo<'info> {
     pub ventura_coin: Account<'info, VenturaCoin>,
     #[account(mut, token::mint = ventura_coin.mint)]
     pub to: Account<'info, TokenAccount>,
-    #[account(mut, address = ventura_coin.mint)]
+    #[account(mut, seeds=[b"ventura_mint"], bump)]
     pub ventura_mint: Account<'info, Mint>,
     /// CHECK: used as a signing PDA to authorize coin minting
     #[account(seeds=[], bump)]
@@ -474,9 +474,9 @@ pub struct MintVenturaTo<'info> {
 pub struct BurnReserveVentura<'info> {
     #[account(mut, has_one = reserve_wallet, seeds = [b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
-    #[account(mut, address = ventura_coin.ventura_reserve)]
+    #[account(mut, seeds=[b"ventura_reserve"], bump)]
     pub ventura_reserve: Account<'info, TokenAccount>,
-    #[account(mut, address = ventura_coin.mint)]
+    #[account(mut, seeds=[b"ventura_mint"], bump)]
     pub ventura_mint: Account<'info, Mint>,
     /// CHECK: used as a signing PDA to authorize coin minting
     #[account(seeds=[], bump)]
