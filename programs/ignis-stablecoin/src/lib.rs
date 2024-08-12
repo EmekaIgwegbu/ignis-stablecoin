@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{
-    self, Burn, InitializeAccount, InitializeMint, Mint, MintTo, Token, TokenAccount,
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token::{self, Burn, InitializeAccount, InitializeMint, Mint, MintTo, Token, TokenAccount},
 };
 // use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
@@ -13,28 +14,6 @@ pub mod ignis_stablecoin {
     use super::*;
 
     pub fn initialise(ctx: Context<Initialise>) -> Result<()> {
-        // Initialise ignis mint
-        token::initialize_mint(
-            ctx.accounts.initialise_mint_ctx(Coin::Ignis),
-            6,                                              // ignis decimal precision
-            ctx.accounts.signing_pda.to_account_info().key, // set the mint_authority to the signing_pda
-            Some(ctx.accounts.signing_pda.to_account_info().key),
-        )?;
-
-        // Initialize ventura mint
-        token::initialize_mint(
-            ctx.accounts.initialise_mint_ctx(Coin::Ventura),
-            6,                                              // ventura decimal precision
-            ctx.accounts.signing_pda.to_account_info().key, // set the mint_authority to the signing_pda
-            Some(ctx.accounts.signing_pda.to_account_info().key),
-        )?;
-
-        // Initialize ignis reserve
-        token::initialize_account(ctx.accounts.initialise_reserve_ctx(Coin::Ignis))?;
-
-        // Initialize ventura reserve
-        token::initialize_account(ctx.accounts.initialise_reserve_ctx(Coin::Ventura))?;
-
         // Initialize ignis stablecoin properties
         let ignis_stablecoin = &mut ctx.accounts.ignis_stablecoin;
         // TODO: Either figure out a way to serialize strings into a fixed length byte array or link this account to token metadata
@@ -203,55 +182,6 @@ pub mod ignis_stablecoin {
     }
 }
 
-impl<'info> Initialise<'info> {
-    pub fn initialise_mint_ctx(
-        &self,
-        coin: Coin,
-    ) -> CpiContext<'_, '_, '_, 'info, InitializeMint<'info>> {
-        let token_program = self.token_program.to_account_info();
-        let mint: &UncheckedAccount<'info>;
-
-        match coin {
-            Coin::Ignis => mint = &self.ignis_mint,
-            Coin::Ventura => mint = &self.ventura_mint,
-        }
-
-        let cpi_accounts = InitializeMint {
-            mint: mint.to_account_info(),
-            rent: self.rent.to_account_info(),
-        };
-        CpiContext::new(token_program, cpi_accounts)
-    }
-
-    pub fn initialise_reserve_ctx(
-        &self,
-        coin: Coin,
-    ) -> CpiContext<'_, '_, '_, 'info, InitializeAccount<'info>> {
-        let token_program = self.token_program.to_account_info();
-        let mint: &UncheckedAccount<'info>;
-        let reserve: &UncheckedAccount<'info>;
-
-        match coin {
-            Coin::Ignis => {
-                mint = &self.ignis_mint;
-                reserve = &self.ignis_reserve;
-            }
-            Coin::Ventura => {
-                mint = &self.ventura_mint;
-                reserve = &self.ventura_reserve;
-            }
-        }
-
-        let cpi_accounts = InitializeAccount {
-            account: reserve.to_account_info(),
-            mint: mint.to_account_info(),
-            authority: self.signing_pda.to_account_info(),
-            rent: self.rent.to_account_info(),
-        };
-        CpiContext::new(token_program, cpi_accounts)
-    }
-}
-
 impl<'info> Redeem<'info> {
     pub fn burn_user_coin_ctx(&self, coin: Coin) -> CpiContext<'_, '_, '_, 'info, Burn<'info>> {
         let token_program = self.token_program.to_account_info();
@@ -355,18 +285,14 @@ pub struct Initialise<'info> {
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(init, payer = reserve_wallet, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 32, seeds=[b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
-    /// CHECK: The ignis mint account has not yet been initialised. This is just a PDA.
-    #[account(seeds=[b"ignis_mint"], bump)]
-    pub ignis_mint: UncheckedAccount<'info>,
-    /// CHECK: The ventura mint account has not yet been initialised. This is just a PDA.
-    #[account(seeds=[b"ventura_mint"], bump)]
-    pub ventura_mint: UncheckedAccount<'info>,
-    /// CHECK: The ignis reserve account has not yet been initialised. This is just a PDA.
-    #[account(seeds=[b"ignis_reserve"], bump)]
-    pub ignis_reserve: UncheckedAccount<'info>,
-    /// CHECK: The ventura reserve account has not yet been initialised. This is just a PDA.
-    #[account(seeds=[b"ventura_reserve"], bump)]
-    pub ventura_reserve: UncheckedAccount<'info>,
+    #[account(init, payer = reserve_wallet, mint::decimals = 6, mint::authority = signing_pda, mint::freeze_authority = signing_pda, seeds=[b"ignis_mint"], bump)]
+    pub ignis_mint: Account<'info, Mint>,
+    #[account(init, payer = reserve_wallet, mint::decimals = 6, mint::authority = signing_pda, mint::freeze_authority = signing_pda, seeds=[b"ventura_mint"], bump)]
+    pub ventura_mint: Account<'info, Mint>,
+    #[account(init, payer = reserve_wallet, associated_token::mint = ignis_mint, associated_token::authority = signing_pda)]
+    pub ignis_reserve: Account<'info, TokenAccount>,
+    #[account(init, payer = reserve_wallet, associated_token::mint = ventura_mint, associated_token::authority = signing_pda)]
+    pub ventura_reserve: Account<'info, TokenAccount>,
     // The address constraint ensures that only the predefined reserve wallet can authorise this instruction
     #[account(mut, address = Pubkey::from_str("52Ygg62kTvXgurKkyezpToHGvmU51CJxLXoEoZ25HnMm").unwrap())]
     pub reserve_wallet: Signer<'info>,
@@ -374,6 +300,7 @@ pub struct Initialise<'info> {
     #[account(seeds=[], bump)]
     pub signing_pda: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
 }
@@ -385,9 +312,9 @@ pub struct Redeem<'info> {
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(mut, seeds = [b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
-    #[account(mut, token::authority = user, token::mint = ignis_stablecoin.mint)]
+    #[account(mut, token::mint = ignis_stablecoin.mint, token::authority = user)]
     pub user_ignis_account: Account<'info, TokenAccount>,
-    #[account(mut, token::authority = user, token::mint = ventura_coin.mint)]
+    #[account(mut, token::mint = ventura_coin.mint, token::authority = user)]
     pub user_ventura_account: Account<'info, TokenAccount>,
     #[account(mut, seeds=[b"ignis_mint"], bump)]
     pub ignis_mint: Account<'info, Mint>,
@@ -422,10 +349,10 @@ pub struct MintIgnisTo<'info> {
 pub struct BurnReserveIgnis<'info> {
     #[account(mut, has_one = reserve_wallet, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
-    #[account(mut, seeds=[b"ignis_reserve"], bump)]
-    pub ignis_reserve: Account<'info, TokenAccount>,
     #[account(mut, seeds=[b"ignis_mint"], bump)]
     pub ignis_mint: Account<'info, Mint>,
+    #[account(mut, associated_token::mint = ignis_mint, associated_token::authority = signing_pda)]
+    pub ignis_reserve: Account<'info, TokenAccount>,
     /// CHECK: used as a signing PDA to authorize coin minting
     #[account(seeds=[], bump)]
     pub signing_pda: UncheckedAccount<'info>,
@@ -454,10 +381,10 @@ pub struct MintVenturaTo<'info> {
 pub struct BurnReserveVentura<'info> {
     #[account(mut, has_one = reserve_wallet, seeds = [b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
-    #[account(mut, seeds=[b"ventura_reserve"], bump)]
-    pub ventura_reserve: Account<'info, TokenAccount>,
     #[account(mut, seeds=[b"ventura_mint"], bump)]
     pub ventura_mint: Account<'info, Mint>,
+    #[account(mut, associated_token::mint = ventura_mint, associated_token::authority = signing_pda)]
+    pub ventura_reserve: Account<'info, TokenAccount>,
     /// CHECK: used as a signing PDA to authorize coin minting
     #[account(seeds=[], bump)]
     pub signing_pda: UncheckedAccount<'info>,
