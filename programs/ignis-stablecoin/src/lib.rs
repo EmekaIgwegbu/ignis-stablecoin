@@ -6,17 +6,13 @@ use anchor_spl::token::{
 
 use std::str::FromStr;
 
-declare_id!("Bou8TKf8G9iJQoZMptYtFHrpgvEjG4DTTXo8sxShLsht");
+declare_id!("2PpE2DXVUQd8geLFuCbekiQafTGwZ8UTws7veStibuH7");
 
 #[program]
 pub mod ignis_stablecoin {
     use super::*;
 
-    pub fn initialise(
-        ctx: Context<Initialise>,
-        initial_ignis_supply: u64,
-        initial_ventura_supply: u64,
-    ) -> Result<()> {
+    pub fn initialise(ctx: Context<Initialise>) -> Result<()> {
         // Initialise ignis mint
         token::initialize_mint(
             ctx.accounts.initialise_mint_ctx(Coin::Ignis),
@@ -39,30 +35,10 @@ pub mod ignis_stablecoin {
         // Initialize ventura reserve
         token::initialize_account(ctx.accounts.initialise_reserve_ctx(Coin::Ventura))?;
 
-        // Mint ignis to the reserve
-        crate::mint_to(
-            &ctx.accounts.token_program,
-            &ctx.accounts.ignis_mint,
-            &ctx.accounts.ignis_reserve,
-            &ctx.accounts.signing_pda,
-            ctx.bumps.signing_pda,
-            initial_ignis_supply,
-        )?;
-
-        // Mint ventura to the reserve
-        crate::mint_to(
-            &ctx.accounts.token_program,
-            &ctx.accounts.ventura_mint,
-            &ctx.accounts.ventura_reserve,
-            &ctx.accounts.signing_pda,
-            ctx.bumps.signing_pda,
-            initial_ventura_supply,
-        )?;
-
         // Initialize ignis stablecoin properties
         let ignis_stablecoin = &mut ctx.accounts.ignis_stablecoin;
         // TODO: Either figure out a way to serialize strings into a fixed length byte array or link this account to token metadata
-        ignis_stablecoin.reserve_amount = initial_ignis_supply;
+        ignis_stablecoin.reserve_amount = 0;
         ignis_stablecoin.circulating_supply = 0;
         ignis_stablecoin.mint = ctx.accounts.ignis_mint.to_account_info().key();
         ignis_stablecoin.ignis_reserve = ctx.accounts.ignis_reserve.to_account_info().key();
@@ -71,7 +47,7 @@ pub mod ignis_stablecoin {
 
         // Initialize ventura coin properties
         let ventura_coin = &mut ctx.accounts.ventura_coin;
-        ventura_coin.reserve_amount = initial_ventura_supply;
+        ventura_coin.reserve_amount = 0;
         ventura_coin.circulating_supply = 0;
         ventura_coin.mint = ctx.accounts.ventura_mint.to_account_info().key();
         ventura_coin.ventura_reserve = ctx.accounts.ventura_reserve.to_account_info().key();
@@ -233,7 +209,7 @@ impl<'info> Initialise<'info> {
         coin: Coin,
     ) -> CpiContext<'_, '_, '_, 'info, InitializeMint<'info>> {
         let token_program = self.token_program.to_account_info();
-        let mint: &Account<'info, Mint>;
+        let mint: &UncheckedAccount<'info>;
 
         match coin {
             Coin::Ignis => mint = &self.ignis_mint,
@@ -252,8 +228,8 @@ impl<'info> Initialise<'info> {
         coin: Coin,
     ) -> CpiContext<'_, '_, '_, 'info, InitializeAccount<'info>> {
         let token_program = self.token_program.to_account_info();
-        let mint: &Account<'info, Mint>;
-        let reserve: &Account<'info, TokenAccount>;
+        let mint: &UncheckedAccount<'info>;
+        let reserve: &UncheckedAccount<'info>;
 
         match coin {
             Coin::Ignis => {
@@ -379,14 +355,18 @@ pub struct Initialise<'info> {
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(init, payer = reserve_wallet, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 32, seeds=[b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
-    #[account(init, payer = reserve_wallet, space = Mint::LEN, seeds=[b"ignis_mint"], bump)]
-    pub ignis_mint: Account<'info, Mint>,
-    #[account(init, payer = reserve_wallet, space = Mint::LEN, seeds=[b"ventura_mint"], bump)]
-    pub ventura_mint: Account<'info, Mint>,
-    #[account(init, payer = reserve_wallet, space = TokenAccount::LEN, seeds=[b"ignis_reserve"], bump)]
-    pub ignis_reserve: Account<'info, TokenAccount>,
-    #[account(init, payer = reserve_wallet, space = TokenAccount::LEN, seeds=[b"ventura_reserve"], bump)]
-    pub ventura_reserve: Account<'info, TokenAccount>,
+    /// CHECK: The ignis mint account has not yet been initialised. This is just a PDA.
+    #[account(seeds=[b"ignis_mint"], bump)]
+    pub ignis_mint: UncheckedAccount<'info>,
+    /// CHECK: The ventura mint account has not yet been initialised. This is just a PDA.
+    #[account(seeds=[b"ventura_mint"], bump)]
+    pub ventura_mint: UncheckedAccount<'info>,
+    /// CHECK: The ignis reserve account has not yet been initialised. This is just a PDA.
+    #[account(seeds=[b"ignis_reserve"], bump)]
+    pub ignis_reserve: UncheckedAccount<'info>,
+    /// CHECK: The ventura reserve account has not yet been initialised. This is just a PDA.
+    #[account(seeds=[b"ventura_reserve"], bump)]
+    pub ventura_reserve: UncheckedAccount<'info>,
     // The address constraint ensures that only the predefined reserve wallet can authorise this instruction
     #[account(mut, address = Pubkey::from_str("52Ygg62kTvXgurKkyezpToHGvmU51CJxLXoEoZ25HnMm").unwrap())]
     pub reserve_wallet: Signer<'info>,
