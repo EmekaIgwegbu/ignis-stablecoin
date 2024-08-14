@@ -237,9 +237,9 @@ pub fn burn_from_reserve<'info>(
 #[derive(Accounts)]
 pub struct Initialise<'info> {
     // Change this to include space for other fields
-    #[account(init, payer = reserve_wallet, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 8 + 32, seeds=[b"ignis_stablecoin"], bump)]
+    #[account(init, payer = reserve_wallet, space = 8 + 32 + 16 + 32 + 32 + 8 + 32, seeds=[b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
-    #[account(init, payer = reserve_wallet, space = 8 + 32 + 16 + 8 + 8 + 32 + 32 + 32, seeds=[b"ventura_coin"], bump)]
+    #[account(init, payer = reserve_wallet, space = 8 + 32 + 16 + 32 + 32 + 32, seeds=[b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
     #[account(init, payer = reserve_wallet, mint::decimals = 6, mint::authority = signing_pda, mint::freeze_authority = signing_pda, seeds=[b"ignis_mint"], bump)]
     pub ignis_mint: Account<'info, Mint>,
