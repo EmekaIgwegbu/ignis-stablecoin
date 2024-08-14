@@ -82,7 +82,7 @@ pub mod ignis_stablecoin {
     }
 
     pub fn mint_ignis_to(ctx: Context<MintIgnisTo>, amount: u64) -> Result<()> {
-        // Mint ignis to the reserve
+        // Mint ignis to the target account
         crate::mint_to(
             &ctx.accounts.token_program,
             &ctx.accounts.ignis_mint,
@@ -290,7 +290,7 @@ pub struct Redeem<'info> {
 pub struct MintIgnisTo<'info> {
     #[account(mut, has_one = reserve_wallet, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
-    #[account(mut, token::mint = ignis_stablecoin.mint)]
+    #[account(mut, token::mint = ignis_mint)]
     pub to: Account<'info, TokenAccount>,
     #[account(mut, seeds=[b"ignis_mint"], bump)]
     pub ignis_mint: Account<'info, Mint>,
@@ -322,7 +322,7 @@ pub struct BurnReserveIgnis<'info> {
 pub struct MintVenturaTo<'info> {
     #[account(mut, has_one = reserve_wallet, seeds = [b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
-    #[account(mut, token::mint = ventura_coin.mint)]
+    #[account(mut, token::mint = ventura_mint)]
     pub to: Account<'info, TokenAccount>,
     #[account(mut, seeds=[b"ventura_mint"], bump)]
     pub ventura_mint: Account<'info, Mint>,
@@ -354,7 +354,7 @@ pub struct BurnReserveVentura<'info> {
 pub struct IgnisStablecoin {
     // TODO (low priority): Include name, symbol, image and other metadata
     pub mint: Pubkey,          // mint account address
-    pub ignis_reserve: Pubkey, // address of the ignis token account that belongs to the reserve
+    pub ignis_reserve: Pubkey, // address of the associated ignis token account that belongs to the reserve
     pub peg: f64,
     pub reserve_wallet: Pubkey, // signing authority for the reserve
 }
@@ -363,7 +363,7 @@ pub struct IgnisStablecoin {
 pub struct VenturaCoin {
     // TODO (low priority): Include name, symbol, image and other metadata
     pub mint: Pubkey,            // mint account address
-    pub ventura_reserve: Pubkey, // address of the ventura token account that belongs to the reserve
+    pub ventura_reserve: Pubkey, // address of the associated ventura token account that belongs to the reserve
     pub reserve_wallet: Pubkey,  // signing authority for the reserve
 }
 
