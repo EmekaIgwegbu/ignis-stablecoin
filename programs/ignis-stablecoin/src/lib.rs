@@ -17,8 +17,6 @@ pub mod ignis_stablecoin {
         // Initialize ignis stablecoin properties
         let ignis_stablecoin = &mut ctx.accounts.ignis_stablecoin;
         // TODO: Either figure out a way to serialize strings into a fixed length byte array or link this account to token metadata
-        ignis_stablecoin.reserve_amount = 0;
-        ignis_stablecoin.circulating_supply = 0;
         ignis_stablecoin.mint = ctx.accounts.ignis_mint.to_account_info().key();
         ignis_stablecoin.ignis_reserve = ctx.accounts.ignis_reserve.to_account_info().key();
         ignis_stablecoin.peg = 1.0;
@@ -26,8 +24,6 @@ pub mod ignis_stablecoin {
 
         // Initialize ventura coin properties
         let ventura_coin = &mut ctx.accounts.ventura_coin;
-        ventura_coin.reserve_amount = 0;
-        ventura_coin.circulating_supply = 0;
         ventura_coin.mint = ctx.accounts.ventura_mint.to_account_info().key();
         ventura_coin.ventura_reserve = ctx.accounts.ventura_reserve.to_account_info().key();
         ventura_coin.reserve_wallet = ctx.accounts.reserve_wallet.key();
@@ -63,13 +59,6 @@ pub mod ignis_stablecoin {
             ventura_amount,
         )?;
 
-        // Update ignis stablecoin properties
-        let ignis_stablecoin = &mut ctx.accounts.ignis_stablecoin;
-        ignis_stablecoin.circulating_supply -= amount;
-
-        // Update ventura coin properties
-        let ventura_coin = &mut ctx.accounts.ventura_coin;
-        ventura_coin.circulating_supply += ventura_amount;
         Ok(())
     }
 
@@ -89,13 +78,6 @@ pub mod ignis_stablecoin {
             ignis_amount,
         )?;
 
-        // Update ignis stablecoin properties
-        let ignis_stablecoin = &mut ctx.accounts.ignis_stablecoin;
-        ignis_stablecoin.circulating_supply += ignis_amount;
-
-        // Update ventura coin properties
-        let ventura_coin = &mut ctx.accounts.ventura_coin;
-        ventura_coin.circulating_supply -= amount;
         Ok(())
     }
 
@@ -109,16 +91,6 @@ pub mod ignis_stablecoin {
             ctx.bumps.signing_pda,
             amount,
         )?;
-
-        let ignis_stablecoin = &mut ctx.accounts.ignis_stablecoin;
-        let to = &ctx.accounts.to;
-
-        // Update stablecoin properties
-        if to.key() == ignis_stablecoin.ignis_reserve {
-            ignis_stablecoin.reserve_amount += amount;
-        } else {
-            ignis_stablecoin.circulating_supply += amount;
-        }
 
         Ok(())
     }
@@ -134,16 +106,6 @@ pub mod ignis_stablecoin {
             amount,
         )?;
 
-        let ventura_coin = &mut ctx.accounts.ventura_coin;
-        let to = &ctx.accounts.to;
-
-        // Update coin properties
-        if to.key() == ventura_coin.ventura_reserve {
-            ventura_coin.reserve_amount += amount;
-        } else {
-            ventura_coin.circulating_supply += amount;
-        }
-
         Ok(())
     }
 
@@ -158,9 +120,6 @@ pub mod ignis_stablecoin {
             amount,
         )?;
 
-        // Update stablecoin properties
-        let ignis_stablecoin = &mut ctx.accounts.ignis_stablecoin;
-        ignis_stablecoin.reserve_amount -= amount;
         Ok(())
     }
 
@@ -175,9 +134,6 @@ pub mod ignis_stablecoin {
             amount,
         )?;
 
-        // Update coin properties
-        let ventura_coin = &mut ctx.accounts.ventura_coin;
-        ventura_coin.reserve_amount -= amount;
         Ok(())
     }
 }
@@ -191,11 +147,11 @@ impl<'info> Redeem<'info> {
         match coin {
             Coin::Ignis => {
                 mint = &self.ignis_mint;
-                user_token_account = &self.user_ignis_account;
+                user_token_account = &self.user_ignis_ata;
             }
             Coin::Ventura => {
                 mint = &self.ventura_mint;
-                user_token_account = &self.user_ventura_account;
+                user_token_account = &self.user_ventura_ata;
             }
         }
 
@@ -216,11 +172,11 @@ impl<'info> Redeem<'info> {
         match coin {
             Coin::Ignis => {
                 mint = &self.ignis_mint;
-                user_token_account = &self.user_ignis_account;
+                user_token_account = &self.user_ignis_ata;
             }
             Coin::Ventura => {
                 mint = &self.ventura_mint;
-                user_token_account = &self.user_ventura_account;
+                user_token_account = &self.user_ventura_ata;
             }
         }
 
@@ -302,7 +258,6 @@ pub struct Initialise<'info> {
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
-    pub rent: Sysvar<'info, Rent>,
 }
 
 #[derive(Accounts)]
@@ -312,10 +267,12 @@ pub struct Redeem<'info> {
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(mut, seeds = [b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
-    #[account(mut, token::mint = ignis_stablecoin.mint, token::authority = user)]
-    pub user_ignis_account: Account<'info, TokenAccount>,
-    #[account(mut, token::mint = ventura_coin.mint, token::authority = user)]
-    pub user_ventura_account: Account<'info, TokenAccount>,
+    // The user's associated ignis token account
+    #[account(mut, associated_token::mint = ignis_stablecoin.mint, associated_token::authority = user)]
+    pub user_ignis_ata: Account<'info, TokenAccount>,
+    // The user's associated ventura token account
+    #[account(mut, associated_token::mint = ventura_coin.mint, associated_token::authority = user)]
+    pub user_ventura_ata: Account<'info, TokenAccount>,
     #[account(mut, seeds=[b"ignis_mint"], bump)]
     pub ignis_mint: Account<'info, Mint>,
     #[account(mut, seeds=[b"ventura_mint"], bump)]
@@ -396,9 +353,7 @@ pub struct BurnReserveVentura<'info> {
 #[account]
 pub struct IgnisStablecoin {
     // TODO (low priority): Include name, symbol, image and other metadata
-    pub reserve_amount: u64, // measured in microignis (millionths of ignis)
-    pub circulating_supply: u64, // excludes reserve_amount, measured in microignis
-    pub mint: Pubkey,        // mint account address
+    pub mint: Pubkey,          // mint account address
     pub ignis_reserve: Pubkey, // address of the ignis token account that belongs to the reserve
     pub peg: f64,
     pub reserve_wallet: Pubkey, // signing authority for the reserve
@@ -407,11 +362,9 @@ pub struct IgnisStablecoin {
 #[account]
 pub struct VenturaCoin {
     // TODO (low priority): Include name, symbol, image and other metadata
-    pub reserve_amount: u64, // measured in microventura (millionths of ventura)
-    pub circulating_supply: u64, // excludes reserve_amount, measured in microventura
-    pub mint: Pubkey,        // mint account address
+    pub mint: Pubkey,            // mint account address
     pub ventura_reserve: Pubkey, // address of the ventura token account that belongs to the reserve
-    pub reserve_wallet: Pubkey, // signing authority for the reserve
+    pub reserve_wallet: Pubkey,  // signing authority for the reserve
 }
 
 pub enum Coin {
