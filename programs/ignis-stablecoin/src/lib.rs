@@ -352,7 +352,7 @@ pub struct BurnReserveVentura<'info> {
 
 #[account]
 pub struct IgnisStablecoin {
-    // TODO (low priority): Include name, symbol, image and other metadata
+    // TODO (low priority): Include name, symbol, image and other metadata. If not consider discounting the space allocated to these.
     pub mint: Pubkey,          // mint account address
     pub ignis_reserve: Pubkey, // address of the associated ignis token account that belongs to the reserve
     pub peg: f64,
@@ -361,7 +361,7 @@ pub struct IgnisStablecoin {
 
 #[account]
 pub struct VenturaCoin {
-    // TODO (low priority): Include name, symbol, image and other metadata
+    // TODO (low priority): Include name, symbol, image and other metadata. If not consider discounting the space allocated to these.
     pub mint: Pubkey,            // mint account address
     pub ventura_reserve: Pubkey, // address of the associated ventura token account that belongs to the reserve
     pub reserve_wallet: Pubkey,  // signing authority for the reserve
