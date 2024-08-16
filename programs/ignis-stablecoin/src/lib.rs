@@ -3,14 +3,18 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token::{self, Burn, Mint, MintTo, Token, TokenAccount},
 };
-// use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
+use pyth_solana_receiver_sdk::price_update::{get_feed_id_from_hex, Price, PriceUpdateV2};
 
 use std::str::FromStr;
 
 declare_id!("2PpE2DXVUQd8geLFuCbekiQafTGwZ8UTws7veStibuH7");
 
+const TOKEN_DECIMALS: u8 = 6;
+const USD_TO_CENTS_EXPONENT: i32 = 2;
+
 #[program]
 pub mod ignis_stablecoin {
+
     use super::*;
 
     pub fn initialise(ctx: Context<Initialise>) -> Result<()> {
@@ -19,7 +23,7 @@ pub mod ignis_stablecoin {
         // TODO: Either figure out a way to serialize strings into a fixed length byte array or link this account to token metadata
         ignis_stablecoin.mint = ctx.accounts.ignis_mint.to_account_info().key();
         ignis_stablecoin.ignis_reserve = ctx.accounts.ignis_reserve.to_account_info().key();
-        ignis_stablecoin.peg = 1.0;
+        ignis_stablecoin.peg_usd_cents = 100;
         ignis_stablecoin.reserve_wallet = ctx.accounts.reserve_wallet.key();
 
         // Initialize ventura coin properties
@@ -31,22 +35,15 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
+    /// amount: the amount to redeem in microignis
     pub fn redeem_ignis(ctx: Context<Redeem>, amount: u64) -> Result<()> {
-        // TODO: Ensure that ventura is listed on the market and fetch the latest market data
-        // TODO: Calculate the equivalent ventura_amount using the market data
-
-        // let ventura_price_update = &mut ctx.accounts.ventura_price_update;
-        // let maximum_age: u64 = 30;
-        // let feed_id: [u8; 32] = get_feed_id_from_hex(
-        //     "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
-        // )?;
-        // let ventura_price =
-        //     ventura_price_update.get_price_no_older_than(&Clock::get()?, maximum_age, &feed_id)?;
-
-        // let ventura_amount = ctx.accounts.ignis_stablecoin.peg
-        //     / (ventura_price.price * 10i32.pow(ventura_price.exponent));
-
-        let ventura_amount = 2; // TODO: replace this placeholder with code to compute this value
+        // TODO: Include check to ensure that ventura is listed on the market
+        let ventura_price_info = ctx.accounts.get_ventura_market_price_info()?;
+        let ventura_amount = amount
+            * ctx.accounts.ignis_stablecoin.peg_usd_cents
+            * 10u64.pow((-ventura_price_info.exponent - USD_TO_CENTS_EXPONENT) as u32)
+            / (ventura_price_info.price as u64);
+        // let ventura_amount = 2000; // TODO: replace this placeholder with code to compute this value
 
         // Burn ignis from the user's account
         token::burn(ctx.accounts.burn_user_coin_ctx(Coin::Ignis), amount)?;
@@ -62,10 +59,14 @@ pub mod ignis_stablecoin {
         Ok(())
     }
 
+    /// amount: the amount to redeem in microventura
     pub fn redeem_ventura(ctx: Context<Redeem>, amount: u64) -> Result<()> {
-        // TODO: Ensure that ventura is listed on the market and fetch the latest market data
-        // TODO: Calculate the equivalent ignis_amount using the market data
-        let ignis_amount = 2; // TODO: replace this placeholder with code to compute this value
+        // TODO: Include check to ensure that ventura is listed on the market
+        let ventura_price_info = ctx.accounts.get_ventura_market_price_info()?;
+        let ignis_amount = amount * (ventura_price_info.price as u64)
+            / (ctx.accounts.ignis_stablecoin.peg_usd_cents
+                * 10u64.pow((-ventura_price_info.exponent - USD_TO_CENTS_EXPONENT) as u32));
+        // let ignis_amount = 2000; // TODO: replace this placeholder with code to compute this value
 
         // Burn ventura from the user's account
         token::burn(ctx.accounts.burn_user_coin_ctx(Coin::Ventura), amount)?;
@@ -188,6 +189,21 @@ impl<'info> Redeem<'info> {
 
         CpiContext::new(token_program, cpi_accounts)
     }
+
+    pub fn get_ventura_market_price_info(&self) -> Result<Price> {
+        const VENTURA_PYTH_FEED_ID: &str =
+            "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43";
+        const MAXIMUM_AGE: u64 = 60; // 1 min
+
+        let ventura_price_update = &self.ventura_price_update;
+        let ventura_price_info = ventura_price_update.get_price_no_older_than(
+            &Clock::get()?,
+            MAXIMUM_AGE,
+            &get_feed_id_from_hex(VENTURA_PYTH_FEED_ID)?,
+        )?;
+
+        Ok(ventura_price_info)
+    }
 }
 
 pub fn mint_to<'info>(
@@ -241,9 +257,9 @@ pub struct Initialise<'info> {
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
     #[account(init, payer = reserve_wallet, space = 8 + 32 + 16 + 32 + 32 + 32, seeds=[b"ventura_coin"], bump)]
     pub ventura_coin: Account<'info, VenturaCoin>,
-    #[account(init, payer = reserve_wallet, mint::decimals = 6, mint::authority = signing_pda, mint::freeze_authority = signing_pda, seeds=[b"ignis_mint"], bump)]
+    #[account(init, payer = reserve_wallet, mint::decimals = TOKEN_DECIMALS, mint::authority = signing_pda, mint::freeze_authority = signing_pda, seeds=[b"ignis_mint"], bump)]
     pub ignis_mint: Account<'info, Mint>,
-    #[account(init, payer = reserve_wallet, mint::decimals = 6, mint::authority = signing_pda, mint::freeze_authority = signing_pda, seeds=[b"ventura_mint"], bump)]
+    #[account(init, payer = reserve_wallet, mint::decimals = TOKEN_DECIMALS, mint::authority = signing_pda, mint::freeze_authority = signing_pda, seeds=[b"ventura_mint"], bump)]
     pub ventura_mint: Account<'info, Mint>,
     #[account(init, payer = reserve_wallet, associated_token::mint = ignis_mint, associated_token::authority = signing_pda)]
     pub ignis_reserve: Account<'info, TokenAccount>,
@@ -261,7 +277,6 @@ pub struct Initialise<'info> {
 }
 
 #[derive(Accounts)]
-// #[instruction()] // TODO: figure out what this is for. Copied from example in Pyth docs https://docs.pyth.network/price-feeds/use-real-time-data/solana#write-contract-code
 pub struct Redeem<'info> {
     #[account(mut, seeds = [b"ignis_stablecoin"], bump)]
     pub ignis_stablecoin: Account<'info, IgnisStablecoin>,
@@ -277,8 +292,8 @@ pub struct Redeem<'info> {
     pub ignis_mint: Account<'info, Mint>,
     #[account(mut, seeds=[b"ventura_mint"], bump)]
     pub ventura_mint: Account<'info, Mint>,
-    // Used to fetch the latest ventura price data
-    // pub ventura_price_update: Account<'info, PriceUpdateV2>,
+    // Used to fetch the latest ventura price data from offchain sources
+    pub ventura_price_update: Account<'info, PriceUpdateV2>,
     /// CHECK: used as a signing PDA to authorize coin minting
     #[account(seeds=[], bump)]
     pub signing_pda: UncheckedAccount<'info>,
@@ -355,7 +370,7 @@ pub struct IgnisStablecoin {
     // TODO (low priority): Include name, symbol, image and other metadata. If not consider discounting the space allocated to these.
     pub mint: Pubkey,          // mint account address
     pub ignis_reserve: Pubkey, // address of the associated ignis token account that belongs to the reserve
-    pub peg: f64,
+    pub peg_usd_cents: u64,
     pub reserve_wallet: Pubkey, // signing authority for the reserve
 }
 
