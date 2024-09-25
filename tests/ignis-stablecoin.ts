@@ -33,9 +33,15 @@ describe("ignis-stablecoin", function () {
   let userIgnisATAPubKey: PublicKey;
   let userVenturaATAPubKey: PublicKey;
 
+  // Ventura price oracle account
+  let venturaPriceUpdatePubKey: PublicKey;
+
   before("Generate keypairs and PDAs", async function () {
     // Assign wallets
     user = Keypair.generate();
+
+    // Generate public key for ventura price oracle
+    venturaPriceUpdatePubKey = Keypair.generate().publicKey;
 
     // Derive PDAs
     [ignisStablecoinPDA] = await PublicKey.findProgramAddress(
@@ -101,7 +107,7 @@ describe("ignis-stablecoin", function () {
     const venturaReserveAccount = await getAccount(connection, venturaReservePubKey);
 
     // Assertions on ignisStablecoin properties
-    assert.equal(ignisStablecoinAccount.peg, 1.0);
+    assert.equal(ignisStablecoinAccount.pegUsd, 1.0);
     assert.isTrue(ignisStablecoinAccount.mint.equals(ignisMintPDA));
     assert.isTrue(ignisStablecoinAccount.ignisReserve.equals(ignisReservePubKey));
     assert.isTrue(ignisStablecoinAccount.reserveWallet.equals(wallet.publicKey));
@@ -145,48 +151,11 @@ describe("ignis-stablecoin", function () {
       userVenturaATAPubKey = await createAccount(connection, walletKeypair, venturaMintPDA, user.publicKey);
     })
 
-    after("Reset token balances to 0", async function () {
-      const ignisReserve = await getAccount(connection, ignisReservePubKey);
-      const ignisReserveAmount = ignisReserve.amount.toString();
-      const venturaReserve = await getAccount(connection, venturaReservePubKey);
-      const venturaReserveAmount = venturaReserve.amount.toString();
-      const userIgnisATA = await getOrCreateAssociatedTokenAccount(connection, walletKeypair, ignisMintPDA, user.publicKey);
-      const userVenturaATA = await getOrCreateAssociatedTokenAccount(connection, walletKeypair, venturaMintPDA, user.publicKey);
-      const userIgnisAmount = userIgnisATA.amount;
-      const userVenturaAmount = userVenturaATA.amount;
-
-      // Burn all reserve ignis
-      await program.methods
-        .burnReserveIgnis(new anchor.BN(ignisReserveAmount))
-        .accounts({
-          ignisStableCoin: ignisStablecoinPDA,
-          ignisMint: ignisMintPDA,
-          ignisReserve: ignisReservePubKey,
-          signingPda: signingPDA,
-          reserveWallet: wallet.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-        })
-        .rpc();
-
-      // Burn all reserve ventura
-      await program.methods
-        .burnReserveVentura(new anchor.BN(venturaReserveAmount))
-        .accounts({
-          venturaCoin: venturaCoinPDA,
-          venturaMintPDA: venturaMintPDA,
-          venturaReserve: venturaReservePubKey,
-          signingPda: signingPDA,
-          reserveWallet: wallet.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-        })
-        .rpc();
-
-      // Burn all user ignis and ventura
-      await burn(connection, walletKeypair, userIgnisATA.address, ignisMintPDA, user, userIgnisAmount);
-      await burn(connection, walletKeypair, userVenturaATA.address, venturaMintPDA, user, userVenturaAmount);
-    })
-
     describe('Mint ignis to user then redeem it', async function () {
+      after("Reset token balances to 0", async function () {
+        await resetTokenBalances();
+      })
+
       const ignisAmount = 2;
 
       it('Mint ignis to user', async function () {
@@ -220,6 +189,7 @@ describe("ignis-stablecoin", function () {
             userVenturaAta: userVenturaATAPubKey,
             ignisMint: ignisMintPDA,
             venturaMint: venturaMintPDA,
+            venturaPriceUpdate: venturaPriceUpdatePubKey,
             signingPda: signingPDA,
             user: user.publicKey,
             tokenProgram: TOKEN_PROGRAM_ID,
@@ -244,6 +214,10 @@ describe("ignis-stablecoin", function () {
     })
 
     describe("Mint ignis to the reserve then burn it", function () {
+      after("Reset token balances to 0", async function () {
+        await resetTokenBalances();
+      })
+
       const ignisAmount = 2;
 
       it('Mint ignis to the reserve', async function () {
@@ -293,6 +267,10 @@ describe("ignis-stablecoin", function () {
   describe("ventura instructions", function () {
 
     describe('Mint ventura to user then redeem it', async function () {
+      after("Reset token balances to 0", async function () {
+        await resetTokenBalances();
+      })
+
       const venturaAmount = 2;
 
       it('Mint ventura to user', async function () {
@@ -326,6 +304,7 @@ describe("ignis-stablecoin", function () {
             userVenturaAta: userVenturaATAPubKey,
             ignisMint: ignisMintPDA,
             venturaMint: venturaMintPDA,
+            venturaPriceUpdate: venturaPriceUpdatePubKey,
             signingPda: signingPDA,
             user: user.publicKey,
             tokenProgram: TOKEN_PROGRAM_ID,
@@ -349,6 +328,10 @@ describe("ignis-stablecoin", function () {
     })
 
     describe("Mint ventura to the reserve then burn it", function () {
+      after("Reset token balances to 0", async function () {
+        await resetTokenBalances();
+      })
+
       const venturaAmount = 2;
 
       it('Mint ventura to the reserve', async function () {
@@ -394,7 +377,49 @@ describe("ignis-stablecoin", function () {
       });
     })
   });
+
+  async function resetTokenBalances() {
+    const ignisReserve = await getAccount(connection, ignisReservePubKey);
+    const ignisReserveAmount = ignisReserve.amount.toString();
+    const venturaReserve = await getAccount(connection, venturaReservePubKey);
+    const venturaReserveAmount = venturaReserve.amount.toString();
+    const userIgnisATA = await getOrCreateAssociatedTokenAccount(connection, walletKeypair, ignisMintPDA, user.publicKey);
+    const userVenturaATA = await getOrCreateAssociatedTokenAccount(connection, walletKeypair, venturaMintPDA, user.publicKey);
+    const userIgnisAmount = userIgnisATA.amount;
+    const userVenturaAmount = userVenturaATA.amount;
+
+    // Burn all reserve ignis
+    await program.methods
+      .burnReserveIgnis(new anchor.BN(ignisReserveAmount))
+      .accounts({
+        ignisStableCoin: ignisStablecoinPDA,
+        ignisMint: ignisMintPDA,
+        ignisReserve: ignisReservePubKey,
+        signingPda: signingPDA,
+        reserveWallet: wallet.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+
+    // Burn all reserve ventura
+    await program.methods
+      .burnReserveVentura(new anchor.BN(venturaReserveAmount))
+      .accounts({
+        venturaCoin: venturaCoinPDA,
+        venturaMintPDA: venturaMintPDA,
+        venturaReserve: venturaReservePubKey,
+        signingPda: signingPDA,
+        reserveWallet: wallet.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+
+    // Burn all user ignis and ventura
+    await burn(connection, walletKeypair, userIgnisATA.address, ignisMintPDA, user, userIgnisAmount);
+    await burn(connection, walletKeypair, userVenturaATA.address, venturaMintPDA, user, userVenturaAmount);
+  }
 });
+
 
 function loadKeypairFromSeedFile(filePath: string): Keypair {
   const fileContent = readFileSync(filePath);
